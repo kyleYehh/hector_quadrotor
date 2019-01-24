@@ -38,7 +38,7 @@
 #include <hector_quadrotor_interface/helpers.h>
 
 #include <tf/transform_listener.h> // for tf::getPrefixParam()
-
+#include <pluginlib/class_list_macros.h>
 #include <boost/thread/mutex.hpp>
 #include <std_msgs/Bool.h>
 #include <limits>
@@ -59,6 +59,8 @@ public:
   {
     attitude_subscriber_helper_.reset();
     estop_sub_.shutdown();
+    //0108
+    //attitude_sub_.shutdown();
   }
 
   virtual bool init(hector_quadrotor_interface::QuadrotorInterface *interface, ros::NodeHandle &root_nh,
@@ -105,6 +107,9 @@ public:
 
     estop_ = false;
     estop_sub_ = root_nh.subscribe("estop", 1, &AttitudeController::estopCb, this);
+    
+    //0108
+    //attitude_sub_ = root_nh.subscribe<hector_uav_msgs::AttitudeCommand>("command/attitude", 1, &AttitudeController::attitudeCommandCallback, this);
 
     return true;
   }
@@ -127,6 +132,20 @@ public:
   {
     wrench_output_->stop();
   }
+  
+  //0108
+  /*
+  void attitudeCommandCallback(const hector_uav_msgs::AttitudeCommandConstPtr &command)
+  {
+    boost::mutex::scoped_lock lock(command_mutex_);
+    
+    ros::Time start_time = command->header.stamp;
+    if (start_time.isZero()) start_time = ros::Time::now();
+    if (!isRunning()) this->startRequest(start_time);
+
+    updateAttitudeCommand(*command);
+  }
+  */
 
   virtual void update(const ros::Time &time, const ros::Duration &period)
   {
@@ -135,6 +154,7 @@ public:
     if (attitude_input_->connected() && attitude_input_->enabled())
     {
       attitude_command_ = attitude_input_->getCommand();
+      //ROS_INFO("attitude_command_from attitude_input.roll: %f\n",attitude_command_.roll);
     }
     if (yawrate_input_->connected() && yawrate_input_->enabled())
     {
@@ -150,6 +170,7 @@ public:
     thrust_command_ = thrust_limiter_(thrust_command_);
 
     // TODO move estop to gazebo plugin
+    /*
     if ((motor_status_->motorStatus().running == true) &&
         !command_timeout_.isZero() && (
             time > attitude_command_.header.stamp + command_timeout_ ||
@@ -166,6 +187,7 @@ public:
     } else if (command_estop_) {
       command_estop_ = false;
     }
+    */
 
     double roll, pitch, yaw;
     pose_->getEulerRPY(roll, pitch, yaw);
@@ -178,6 +200,7 @@ public:
     accel_body.linear = pose_->toBody(accel.linear);
     accel_body.angular = pose_->toBody(accel.angular);
 
+    /*
     if (estop_ || command_estop_)
     {
       attitude_command_.roll = attitude_command_.pitch = yawrate_command_.turnrate = 0;
@@ -185,15 +208,18 @@ public:
       if (estop_thrust_command_.thrust < 0) estop_thrust_command_.thrust = 0;
       thrust_command_ = estop_thrust_command_;
     }
-
+    */
+    
     // Control approach:
     // 1. We consider the roll and pitch commands as desired accelerations in the base_stabilized frame,
     //    not considering wind (inverse of the calculation in velocity_controller.cpp).
     Vector3 acceleration_command_base_stabilized;
+    //ROS_INFO("attitude_command_.roll: %f\n",attitude_command_.roll);
     acceleration_command_base_stabilized.x =  sin(attitude_command_.pitch);
     acceleration_command_base_stabilized.y = -sin(attitude_command_.roll);
     acceleration_command_base_stabilized.z = 1.0;
 
+    
     // 2. Transform desired acceleration to the body frame (via the world frame).
     //    The result is independent of the yaw angle because the yaw rotation will be undone in the toBody() step.
     double sin_yaw, cos_yaw;
@@ -232,6 +258,25 @@ public:
 
 private:
 
+  //0108
+  /*
+  void updateAttitudeCommand(const hector_uav_msgs::AttitudeCommand &new_attitude)
+  {
+    if (new_attitude.header.frame_id != base_stabilized_frame_) {
+      ROS_WARN_STREAM_THROTTLE_NAMED(1.0, "attitude_controller", "Attitude commands must be given in the " << base_stabilized_frame_ << " frame, ignoring command");
+    }
+    else
+    {
+      ROS_INFO("new_attitude.roll: %f\n",new_attitude.roll);
+      ROS_INFO("before attitude_command_.roll: %f\n",attitude_command_.roll);
+      attitude_command_ = new_attitude;
+      ROS_INFO("after attitude_command_.roll: %f\n",attitude_command_.roll);
+      attitude_input_->setCommand(attitude_command_);
+      ROS_INFO("hi");
+    }
+  }
+  */
+  
   PoseHandlePtr pose_;
   TwistHandlePtr twist_;
   AccelerationHandlePtr accel_;
@@ -261,6 +306,9 @@ private:
   double estop_deceleration_;
   ros::Duration command_timeout_;
 
+  //0108
+  //ros::Subscriber attitude_sub_;
+  
   struct
   {
     control_toolbox::Pid roll, pitch, yawrate;
@@ -274,7 +322,6 @@ private:
 
 } // namespace hector_quadrotor_controllers
 
-#include <pluginlib/class_list_macros.h>
 
-PLUGINLIB_EXPORT_CLASS(hector_quadrotor_controllers::AttitudeController, controller_interface::ControllerBase
-)
+
+PLUGINLIB_EXPORT_CLASS(hector_quadrotor_controllers::AttitudeController, controller_interface::ControllerBase)

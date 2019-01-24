@@ -156,6 +156,8 @@ public:
 
   virtual void update(const ros::Time &time, const ros::Duration &period)
   {
+    //ROS_INFO("in position control");
+    
     boost::mutex::scoped_lock lock(command_mutex_);
     Twist output;
 

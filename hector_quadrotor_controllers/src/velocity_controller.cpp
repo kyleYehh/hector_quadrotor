@@ -44,6 +44,8 @@
 #include <boost/thread/mutex.hpp>
 #include <limits>
 
+#include <std_msgs/Bool.h>
+
 namespace hector_quadrotor_controllers
 {
 
@@ -60,6 +62,8 @@ public:
   {
     twist_subscriber_.shutdown();
     cmd_vel_subscriber_.shutdown();
+    //0108
+    attitude_sub_.shutdown();
   }
 
   virtual bool init(hector_quadrotor_interface::QuadrotorInterface *interface, ros::NodeHandle &root_nh,
@@ -103,6 +107,12 @@ public:
         &VelocityController::twistCommandCallback, this, _1));
     cmd_vel_subscriber_ = root_nh.subscribe<geometry_msgs::Twist>("cmd_vel", 1, boost::bind(
         &VelocityController::cmd_velCommandCallback, this, _1));
+    
+    //0108
+    attitude_sub_ = root_nh.subscribe<hector_uav_msgs::AttitudeCommand>("command/attitude", 1, &VelocityController::attitudeCommandCallback, this);
+    position_sub_ = root_nh.subscribe<geometry_msgs::PoseStamped>("command/pose", 1, boost::bind(&VelocityController::poseCommandCallback, this, _1));
+    enable_attitude_control_sub_ = root_nh.subscribe<std_msgs::Bool>("enable_attitude_control", 1, &VelocityController::enableAttitudeControlCallback, this);
+    attitudeControl = false;
 
     return true;
   }
@@ -129,6 +139,26 @@ public:
     thrust_output_->stop();
   }
 
+  //0108
+  void attitudeCommandCallback(const hector_uav_msgs::AttitudeCommandConstPtr &command)
+  {
+    boost::mutex::scoped_lock lock(command_mutex_);
+    
+    ros::Time start_time = command->header.stamp;
+    if (start_time.isZero()) start_time = ros::Time::now();
+    if (!isRunning()) this->startRequest(start_time);
+
+    updateAttitudeCommand(*command);
+  }
+  void poseCommandCallback(const geometry_msgs::PoseStampedConstPtr &command)
+  {
+    attitudeControl = false;
+  }
+  void enableAttitudeControlCallback(const std_msgs::BoolConstPtr &msg)
+  {
+    attitudeControl = msg->data;
+  }
+  
   void twistCommandCallback(const geometry_msgs::TwistStampedConstPtr &command)
   {
     boost::mutex::scoped_lock lock(command_mutex_);
@@ -183,6 +213,7 @@ public:
 
   virtual void update(const ros::Time &time, const ros::Duration &period)
   {
+    //ROS_INFO("in velocity control");
     boost::mutex::scoped_lock lock(command_mutex_);
 
     // Get twist command input
@@ -267,12 +298,38 @@ public:
     thrust_control.header.stamp = twist_command_.header.stamp;
 
     // Update output from controller
-    attitude_output_->setCommand(attitude_control);
+    if(!attitudeControl)
+    {
+        attitude_output_->setCommand(attitude_control);
+        ROS_INFO("in POS mode. roll: %f, pitch: %f\n", attitude_control.roll, attitude_control.pitch);
+    }
+    else
+    {
+        attitude_output_->setCommand(self_attitude_control);
+        ROS_INFO("in AUTO mode. roll: %f, pitch: %f\n", self_attitude_control.roll, self_attitude_control.pitch);
+    }
     yawrate_output_->setCommand(yawrate_control);
     thrust_output_->setCommand(thrust_control);
   }
 
 private:
+  
+  //0108
+  void updateAttitudeCommand(const hector_uav_msgs::AttitudeCommand &new_attitude)
+  {
+    if (new_attitude.header.frame_id != base_stabilized_frame_) {
+      ROS_WARN_STREAM_THROTTLE_NAMED(1.0, "attitude_controller", "Attitude commands must be given in the " << base_stabilized_frame_ << " frame, ignoring command");
+    }
+    else
+    {
+      self_attitude_control = new_attitude; 
+    }
+  }
+  
+  //0108
+  hector_uav_msgs::AttitudeCommand self_attitude_control;
+  bool attitudeControl;
+  
   PoseHandlePtr pose_;
   TwistHandlePtr twist_;
   MotorStatusHandlePtr motor_status_;
@@ -285,6 +342,11 @@ private:
   ros::Subscriber twist_subscriber_;
   ros::Subscriber cmd_vel_subscriber_;
 
+  //0108
+  ros::Subscriber attitude_sub_;
+  ros::Subscriber position_sub_;
+  ros::Subscriber enable_attitude_control_sub_;
+  
   geometry_msgs::TwistStamped twist_command_;
 
   hector_quadrotor_interface::TwistLimiter twist_limiter_;

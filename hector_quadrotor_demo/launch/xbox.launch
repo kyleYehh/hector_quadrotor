@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+
+<launch>
+
+  <include file="$(find hector_quadrotor_teleop)/launch/xbox_controller.launch" >
+    <arg name="control_mode" value="position"/>
+  </include>
+
+</launch>
