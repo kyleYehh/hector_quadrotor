@@ -2,7 +2,7 @@
 
 <launch>
   <include file="$(find hector_gazebo_worlds)/launch/start.launch">
-   <arg name="world" value="$(find hector_gazebo_worlds)/worlds/fast.world"/> 
+   <arg name="world" value="$(find hector_gazebo_worlds)/worlds/cylinders0.world"/> 
   </include>
 
 </launch>
