@@ -51,7 +51,8 @@ namespace hector_quadrotor_controllers
 
 using namespace hector_quadrotor_interface;
 
-class VelocityController : public controller_interface::Controller<hector_quadrotor_interface::QuadrotorInterface>
+class VelocityController : public controller_interface::Controller
+                          <hector_quadrotor_interface::QuadrotorInterface>
 {
 public:
   VelocityController()
@@ -66,19 +67,22 @@ public:
     attitude_sub_.shutdown();
   }
 
-  virtual bool init(hector_quadrotor_interface::QuadrotorInterface *interface, ros::NodeHandle &root_nh,
-            ros::NodeHandle &controller_nh)
+  virtual bool init(hector_quadrotor_interface::QuadrotorInterface *interface, 
+          ros::NodeHandle &root_nh, 
+          ros::NodeHandle &controller_nh)
   {
     // get interface handles
     pose_ = interface->getPose();
     twist_ = interface->getTwist();
-//    acceleration_  = interface->getAcceleration();
+//     acceleration_  = interface->getAcceleration();
     motor_status_ = interface->getMotorStatus();
 
     // load parameters
     root_nh.param<std::string>("base_link_frame", base_link_frame_, "base_link");
     root_nh.param<std::string>("world_frame", world_frame_, "/world");
-    root_nh.param<std::string>("base_stabilized_frame", base_stabilized_frame_, "base_stabilized");
+    root_nh.param<std::string>("base_stabilized_frame", 
+							   base_stabilized_frame_, 
+							   "base_stabilized");
     controller_nh.param("limits/load_factor", load_factor_limit_, 1.5);
     getMassAndInertia(root_nh, mass_, inertia_);
 
@@ -102,18 +106,47 @@ public:
     yawrate_output_ = interface->addOutput<YawrateCommandHandle>("yawrate");
     thrust_output_ = interface->addOutput<ThrustCommandHandle>("thrust");
 
-    // Subscribe to commanded twist (geometry_msgs/TwistStamped) and cmd_vel (geometry_msgs/Twist)
-    twist_subscriber_ = root_nh.subscribe<geometry_msgs::TwistStamped>("command/twist", 1, boost::bind(
-        &VelocityController::twistCommandCallback, this, _1));
-    cmd_vel_subscriber_ = root_nh.subscribe<geometry_msgs::Twist>("cmd_vel", 1, boost::bind(
-        &VelocityController::cmd_velCommandCallback, this, _1));
+    // Subscribe to commanded twist (geometry_msgs/TwistStamped) 
+    // and cmd_vel (geometry_msgs/Twist)
+    twist_subscriber_ = root_nh.subscribe<geometry_msgs::TwistStamped>(
+                        "command/twist", 
+                        1, 
+                        boost::bind(&VelocityController::twistCommandCallback, 
+                                    this, _1));
+    cmd_vel_subscriber_ = root_nh.subscribe<geometry_msgs::Twist>(
+                        "cmd_vel", 
+                        1, 
+                        boost::bind(&VelocityController::cmd_velCommandCallback, 
+                          this, _1));
     
     //0108
-    attitude_sub_ = root_nh.subscribe<hector_uav_msgs::AttitudeCommand>("command/attitude", 1, &VelocityController::attitudeCommandCallback, this);
-    position_sub_ = root_nh.subscribe<geometry_msgs::PoseStamped>("command/pose", 1, boost::bind(&VelocityController::poseCommandCallback, this, _1));
-    enable_attitude_control_sub_ = root_nh.subscribe<std_msgs::Bool>("enable_attitude_control", 1, &VelocityController::enableAttitudeControlCallback, this);
-    attitudeControl = false;
-
+    attitude_sub_ = root_nh.subscribe<hector_uav_msgs::AttitudeCommand>(
+                    "self_command/attitude", 
+                    1, 
+                    &VelocityController::attitudeCommandCallback, 
+                    this);
+    thrust_sub_ = root_nh.subscribe<hector_uav_msgs::ThrustCommand>(
+                    "self_command/thrust", 
+                    1,
+                    &VelocityController::thrustCommandCallBack,
+                    this);
+    yaw_rate_sub_ = root_nh.subscribe<hector_uav_msgs::YawrateCommand>(
+                    "self_command/yawrate",
+                    1,
+                    &VelocityController::yawrateCommandCallBack,
+                    this);
+    position_sub_ = root_nh.subscribe<geometry_msgs::PoseStamped>(
+                    "command/pose", 
+                    1, 
+                    boost::bind(&VelocityController::poseCommandCallback, 
+                                this, 
+                                _1));
+    enable_attitude_control_sub_ = root_nh.subscribe<std_msgs::Bool>(
+                    "enable_attitude_control", 
+                    1, 
+                    &VelocityController::enableAttitudeControlCallback, 
+                    this);
+		attitudeControl = false;
     return true;
   }
 
@@ -140,15 +173,26 @@ public:
   }
 
   //0108
-  void attitudeCommandCallback(const hector_uav_msgs::AttitudeCommandConstPtr &command)
-  {
+  void attitudeCommandCallback(const hector_uav_msgs::AttitudeCommandConstPtr &command){
     boost::mutex::scoped_lock lock(command_mutex_);
-    
     ros::Time start_time = command->header.stamp;
     if (start_time.isZero()) start_time = ros::Time::now();
     if (!isRunning()) this->startRequest(start_time);
-
     updateAttitudeCommand(*command);
+  }
+  void thrustCommandCallBack(const hector_uav_msgs::ThrustCommandConstPtr &command){
+    boost::mutex::scoped_lock lock(command_mutex_);
+    ros::Time start_time = command->header.stamp;
+    if (start_time.is_zero()) start_time = ros::Time::now();
+    if (!isRunning()) this->startRequest(start_time);
+    updateThrustCommand(*command);
+  }
+  void yawrateCommandCallBack(const hector_uav_msgs::YawrateCommandConstPtr &command){
+    boost::mutex::scoped_lock lock(command_mutex_);
+    ros::Time start_time = command->header.stamp;
+    if (start_time.is_zero()) start_time = ros::Time::now();
+    if (!isRunning()) this->startRequest(start_time);
+    updateYawrateCommand(*command);
   }
   void poseCommandCallback(const geometry_msgs::PoseStampedConstPtr &command)
   {
@@ -257,18 +301,22 @@ public:
 
     // Get gravity and load factor
     const double gravity = 9.8065;
-    double load_factor = 1. / (  pose_->pose().orientation.w * pose_->pose().orientation.w
-                                 - pose_->pose().orientation.x * pose_->pose().orientation.x
-                                 - pose_->pose().orientation.y * pose_->pose().orientation.y
-                                 + pose_->pose().orientation.z * pose_->pose().orientation.z );
+    double load_factor = 1. / (pose_->pose().orientation.w * pose_->pose().orientation.w
+                             - pose_->pose().orientation.x * pose_->pose().orientation.x
+                             - pose_->pose().orientation.y * pose_->pose().orientation.y
+                             + pose_->pose().orientation.z * pose_->pose().orientation.z );
     // Note: load_factor could be NaN or Inf...?
-    if (load_factor_limit_ > 0.0 && !(load_factor < load_factor_limit_)) load_factor = load_factor_limit_;
+    if (load_factor_limit_ > 0.0 && !(load_factor < load_factor_limit_)) 
+      load_factor = load_factor_limit_;
 
     // Run PID loops
     Vector3 acceleration_command;
-    acceleration_command.x = pid_.x.computeCommand(command.linear.x - twist.linear.x, period);
-    acceleration_command.y = pid_.y.computeCommand(command.linear.y - twist.linear.y, period);
-    acceleration_command.z = pid_.z.computeCommand(command.linear.z - twist.linear.z, period) + gravity;
+    acceleration_command.x = pid_.x.computeCommand(
+      command.linear.x - twist.linear.x, period);
+    acceleration_command.y = pid_.y.computeCommand(
+      command.linear.y - twist.linear.y, period);
+    acceleration_command.z = pid_.z.computeCommand(
+      command.linear.z - twist.linear.z, period) + gravity;
 
     // Transform acceleration command to base_stabilized frame
     Vector3 acceleration_command_base_stabilized;
@@ -287,10 +335,13 @@ public:
     hector_uav_msgs::AttitudeCommand attitude_control;
     hector_uav_msgs::YawrateCommand yawrate_control;
     hector_uav_msgs::ThrustCommand thrust_control;
-    attitude_control.roll    = -asin(std::min(std::max(acceleration_command_base_stabilized.y / gravity, -1.0), 1.0));
-    attitude_control.pitch   =  asin(std::min(std::max(acceleration_command_base_stabilized.x / gravity, -1.0), 1.0));
+    attitude_control.roll = -asin(std::min(
+      std::max(acceleration_command_base_stabilized.y / gravity, -1.0), 1.0));
+    attitude_control.pitch = asin(std::min(
+      std::max(acceleration_command_base_stabilized.x / gravity, -1.0), 1.0));
     yawrate_control.turnrate = command.angular.z;
-    thrust_control.thrust    = mass_ * ((acceleration_command.z - gravity) * load_factor + gravity);
+    thrust_control.thrust = mass_ * 
+        ((acceleration_command.z - gravity) * load_factor + gravity);
 
     // pass down time stamp from twist command
     attitude_control.header.stamp = twist_command_.header.stamp;
@@ -298,36 +349,44 @@ public:
     thrust_control.header.stamp = twist_command_.header.stamp;
 
     // Update output from controller
-    if(!attitudeControl)
-    {
-        attitude_output_->setCommand(attitude_control);
-        ROS_INFO("in POS mode. roll: %f, pitch: %f\n", attitude_control.roll, attitude_control.pitch);
+    if (!attitudeControl) {
+      attitude_output_->setCommand(attitude_control);
+      thrust_output_->setCommand(thrust_control);
+      yawrate_output_->setCommand(yawrate_control);
+//       ROS_INFO("in POS mode. roll: %f, pitch: %f\n", 
+//                 attitude_control.roll, attitude_control.pitch);
+    } else {
+      attitude_output_->setCommand(self_attitude_control);
+      thrust_output_->setCommand(thrust_control);
+      yawrate_output_->setCommand(self_yawrate_control);
+      ROS_INFO("in AUTO mode. roll: %f, pitch: %f\n", 
+                self_attitude_control.roll, self_attitude_control.pitch);
     }
-    else
-    {
-        attitude_output_->setCommand(self_attitude_control);
-        ROS_INFO("in AUTO mode. roll: %f, pitch: %f\n", self_attitude_control.roll, self_attitude_control.pitch);
-    }
-    yawrate_output_->setCommand(yawrate_control);
-    thrust_output_->setCommand(thrust_control);
   }
 
 private:
   
   //0108
-  void updateAttitudeCommand(const hector_uav_msgs::AttitudeCommand &new_attitude)
-  {
+  void updateAttitudeCommand(const hector_uav_msgs::AttitudeCommand& new_attitude) {
     if (new_attitude.header.frame_id != base_stabilized_frame_) {
-      ROS_WARN_STREAM_THROTTLE_NAMED(1.0, "attitude_controller", "Attitude commands must be given in the " << base_stabilized_frame_ << " frame, ignoring command");
-    }
-    else
-    {
+      ROS_WARN_STREAM_THROTTLE_NAMED(1.0, "attitude_controller", 
+									 "Attitude commands must be given in the " 
+									 << base_stabilized_frame_ 
+									 << " frame, ignoring command");
+    } else {
       self_attitude_control = new_attitude; 
     }
   }
-  
+  void updateThrustCommand(const hector_uav_msgs::ThrustCommand& new_thrust) {
+    self_thrust_control = new_thrust;
+  }
+  void updateYawrateCommand(const hector_uav_msgs::YawrateCommand& new_yawrate) {
+    self_yawrate_control = new_yawrate;
+  }
   //0108
   hector_uav_msgs::AttitudeCommand self_attitude_control;
+  hector_uav_msgs::YawrateCommand self_yawrate_control;
+  hector_uav_msgs::ThrustCommand self_thrust_control;
   bool attitudeControl;
   
   PoseHandlePtr pose_;
@@ -344,6 +403,8 @@ private:
 
   //0108
   ros::Subscriber attitude_sub_;
+  ros::Subscriber thrust_sub_;
+  ros::Subscriber yaw_rate_sub_;
   ros::Subscriber position_sub_;
   ros::Subscriber enable_attitude_control_sub_;
   
@@ -367,4 +428,5 @@ private:
 
 } // namespace hector_quadrotor_controllers
 
-PLUGINLIB_EXPORT_CLASS(hector_quadrotor_controllers::VelocityController, controller_interface::ControllerBase)
+PLUGINLIB_EXPORT_CLASS(hector_quadrotor_controllers::VelocityController, 
+					   controller_interface::ControllerBase)

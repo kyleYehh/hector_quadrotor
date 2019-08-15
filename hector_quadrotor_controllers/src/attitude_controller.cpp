@@ -218,7 +218,6 @@ public:
     acceleration_command_base_stabilized.x =  sin(attitude_command_.pitch);
     acceleration_command_base_stabilized.y = -sin(attitude_command_.roll);
     acceleration_command_base_stabilized.z = 1.0;
-
     
     // 2. Transform desired acceleration to the body frame (via the world frame).
     //    The result is independent of the yaw angle because the yaw rotation will be undone in the toBody() step.

@@ -181,8 +181,8 @@ void MainWindow::closeEvent(QCloseEvent *event)
 
 void parrot_ui::MainWindow::on_pushButton_go_clicked()
 {
-    if(ui.lineEdit_posX->text()!="" && ui.lineEdit_posY->text()!="" && ui.lineEdit_posZ->text()!="" && ui.lineEdit_posYaw->text()!="")
-    {
+    if (ui.lineEdit_posX->text() != "" && ui.lineEdit_posY->text() != "" 
+    && ui.lineEdit_posZ->text() != "" && ui.lineEdit_posYaw->text() != "") {
         float x, y, z, yaw;
         x = ui.lineEdit_posX->text().toFloat();
         y = ui.lineEdit_posY->text().toFloat();

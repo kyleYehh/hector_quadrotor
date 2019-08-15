@@ -39,7 +39,7 @@
         <collision name="small_indoor_scenario_collision">
           <geometry>
             <mesh>
-              <uri>file://small_indoor_scenario.dae</uri>
+              <uri>file://tree.dae</uri>
               <scale>1 1 1</scale>
             </mesh>
           </geometry>
@@ -47,7 +47,7 @@
         <visual name="small_indoor_scenario">
           <geometry>
             <mesh>
-              <uri>file://small_indoor_scenario.dae</uri>
+              <uri>file://tree.dae</uri>
               <scale>1 1 1</scale>
             </mesh>
           </geometry>

@@ -110,7 +110,7 @@ void QNode::log( const LogLevel &level, const std::string &msg) {
 		}
 		case(Warn) : {
 				ROS_WARN_STREAM(msg);
-				logging_model_msg << "[INFO] [" << ros::Time::now() << "]: " << msg;
+				logging_model_msg << "[WARN] [" << ros::Time::now() << "]: " << msg;
 				break;
 		}
 		case(Error) : {
@@ -141,10 +141,12 @@ void QNode::send_des_pos_in_pos_mode(float x, float y, float z, float yaw)
         msg.pose.position.x = x;
         msg.pose.position.y = y;
         msg.pose.position.z = z;
-        msg.pose.orientation.x = 0;
-        msg.pose.orientation.y = 0;
-        msg.pose.orientation.z = 0;
-        msg.pose.orientation.x = 1;
+        Eigen::AngleAxis<float> rotation_vector(yaw*M_PI/180.0, Eigen::Vector3f::UnitZ());
+        Eigen::Quaternion<float> quad(rotation_vector);
+        msg.pose.orientation.x = quad.x();
+        msg.pose.orientation.y = quad.y();
+        msg.pose.orientation.z = quad.z();
+        msg.pose.orientation.w = quad.w();
         dest_pos_pub.publish(msg);
     }
 }
@@ -158,10 +160,12 @@ void QNode::send_des_pos_in_att_mode(float x, float y, float z, float yaw)
         msg.pose.position.x = x;
         msg.pose.position.y = y;
         msg.pose.position.z = z;
-        msg.pose.orientation.x = 0;
-        msg.pose.orientation.y = 0;
-        msg.pose.orientation.z = 0;
-        msg.pose.orientation.x = 1;
+        Eigen::AngleAxis<float> rotation_vector(yaw*M_PI/180.0, Eigen::Vector3f::UnitZ());
+        Eigen::Quaternion<float> quad(rotation_vector);
+        msg.pose.orientation.x = quad.x();
+        msg.pose.orientation.y = quad.y();
+        msg.pose.orientation.z = quad.z();
+        msg.pose.orientation.w = quad.w();
         local_goal_pub.publish(msg);
     }
 }

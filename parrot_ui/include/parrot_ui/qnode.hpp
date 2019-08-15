@@ -27,6 +27,8 @@
 #include <vector>
 #include <std_msgs/Bool.h>
 #include <gazebo_msgs/ModelStates.h>
+#include <eigen3/Eigen/Core>
+#include <eigen3/Eigen/Geometry>
 
 /*****************************************************************************
 ** Namespaces
